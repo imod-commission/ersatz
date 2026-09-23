@@ -1,4 +1,4 @@
-#import <CoreData/CoreData.h>
+#import <UIKit/UIKit.h>
 #import <rootless.h>
 #import "EZPhraseListViewController.h"
 #import "EZAddPhraseViewController.h"
@@ -19,21 +19,38 @@ static NSString *settingsPath(void) {
     self.tableView.dataSource = self;
     [self.view addSubview:self.tableView];
 
-    CFArrayRef keys = CFPreferencesCopyKeyList(CFSTR("xyz.skitty.ersatz"), kCFPreferencesCurrentUser, kCFPreferencesAnyHost);
-    if (keys) {
-        _settings = (NSMutableDictionary *)CFBridgingRelease(CFPreferencesCopyMultiple(keys, CFSTR("xyz.skitty.ersatz"), kCFPreferencesCurrentUser, kCFPreferencesAnyHost));
-        CFRelease(keys);
-    } else {
-        _settings = [[NSMutableDictionary alloc] initWithContentsOfFile:settingsPath()];
+    // Read the same plist path used by the tweak first. This keeps the UI and
+    // injected processes on one source of truth, including rootless devices.
+    _settings = [[NSMutableDictionary alloc] initWithContentsOfFile:settingsPath()];
+
+    // Fall back to CFPreferences when the plist has not been created yet.
+    if (!_settings) {
+        CFPreferencesSynchronize(CFSTR("xyz.skitty.ersatz"), kCFPreferencesCurrentUser, kCFPreferencesAnyHost);
+        CFArrayRef keys = CFPreferencesCopyKeyList(CFSTR("xyz.skitty.ersatz"), kCFPreferencesCurrentUser, kCFPreferencesAnyHost);
+        if (keys) {
+            _settings = (NSMutableDictionary *)CFBridgingRelease(CFPreferencesCopyMultiple(keys, CFSTR("xyz.skitty.ersatz"), kCFPreferencesCurrentUser, kCFPreferencesAnyHost));
+            CFRelease(keys);
+        }
     }
+
     if (!_settings) _settings = [NSMutableDictionary dictionary];
     _settings[@"strings"] = [_settings[@"strings"] mutableCopy] ?: [NSMutableArray array];
     [self sortSettings];
 }
 
 - (void)updateSettings {
-    CFPreferencesSetAppValue(CFSTR("strings"), (__bridge CFPropertyListRef)_settings[@"strings"], CFSTR("xyz.skitty.ersatz"));
-    [_settings writeToFile:settingsPath() atomically:YES];
+    NSArray *rules = [_settings[@"strings"] copy] ?: @[];
+    NSString *path = settingsPath();
+
+    // Write the complete dictionary directly, rather than only the strings
+    // key. This also persists shownPrompt and works reliably with rootless.
+    BOOL wroteFile = [_settings writeToFile:path atomically:YES];
+    if (!wroteFile) {
+        NSLog(@"[Ersatz] Could not write preferences to %@", path);
+    }
+
+    CFPreferencesSetAppValue(CFSTR("strings"), (__bridge CFPropertyListRef)rules, CFSTR("xyz.skitty.ersatz"));
+    CFPreferencesAppSynchronize(CFSTR("xyz.skitty.ersatz"));
     CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(), CFSTR("xyz.skitty.ersatz.prefschanged"), NULL, NULL, true);
 }
 
@@ -51,8 +68,6 @@ static NSString *settingsPath(void) {
     for (NSString *section in _sortedStrings) [_sortedStrings[section] sortUsingSelector:@selector(localizedCaseInsensitiveCompare:)];
 }
 
-// Deliberately use a unique selector instead of addPhrase:, which can collide
-// with selectors used internally by Preferences/PSViewController.
 - (void)showAddPhrase {
     EZAddPhraseViewController *controller = [EZAddPhraseViewController new];
     controller.parent = self;
@@ -86,10 +101,7 @@ static NSString *settingsPath(void) {
     [self.tableView reloadData];
 }
 
-- (NSArray *)sections {
-    return [[_sortedStrings allKeys] sortedArrayUsingSelector:@selector(localizedCaseInsensitiveCompare:)];
-}
-
+- (NSArray *)sections { return [[_sortedStrings allKeys] sortedArrayUsingSelector:@selector(localizedCaseInsensitiveCompare:)]; }
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView { return _sortedStrings.count; }
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section { return [_sortedStrings[[self sections][section]] count]; }
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section { return [self sections][section]; }
@@ -130,5 +142,4 @@ static NSString *settingsPath(void) {
     [self sortSettings];
     [tableView reloadData];
 }
-
 @end
