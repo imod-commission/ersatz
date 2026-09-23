@@ -19,37 +19,15 @@ static NSString *settingsPath(void) {
     self.tableView.dataSource = self;
     [self.view addSubview:self.tableView];
 
-    // Read the same plist path used by the tweak first. This keeps the UI and
-    // injected processes on one source of truth, including rootless devices.
     _settings = [[NSMutableDictionary alloc] initWithContentsOfFile:settingsPath()];
-
-    // Fall back to CFPreferences when the plist has not been created yet.
-    if (!_settings) {
-        CFPreferencesSynchronize(CFSTR("xyz.skitty.ersatz"), kCFPreferencesCurrentUser, kCFPreferencesAnyHost);
-        CFArrayRef keys = CFPreferencesCopyKeyList(CFSTR("xyz.skitty.ersatz"), kCFPreferencesCurrentUser, kCFPreferencesAnyHost);
-        if (keys) {
-            _settings = (NSMutableDictionary *)CFBridgingRelease(CFPreferencesCopyMultiple(keys, CFSTR("xyz.skitty.ersatz"), kCFPreferencesCurrentUser, kCFPreferencesAnyHost));
-            CFRelease(keys);
-        }
-    }
-
     if (!_settings) _settings = [NSMutableDictionary dictionary];
     _settings[@"strings"] = [_settings[@"strings"] mutableCopy] ?: [NSMutableArray array];
     [self sortSettings];
 }
 
 - (void)updateSettings {
-    NSArray *rules = [_settings[@"strings"] copy] ?: @[];
-    NSString *path = settingsPath();
-
-    // Write the complete dictionary directly, rather than only the strings
-    // key. This also persists shownPrompt and works reliably with rootless.
-    BOOL wroteFile = [_settings writeToFile:path atomically:YES];
-    if (!wroteFile) {
-        NSLog(@"[Ersatz] Could not write preferences to %@", path);
-    }
-
-    CFPreferencesSetAppValue(CFSTR("strings"), (__bridge CFPropertyListRef)rules, CFSTR("xyz.skitty.ersatz"));
+    [_settings writeToFile:settingsPath() atomically:YES];
+    CFPreferencesSetAppValue(CFSTR("strings"), (__bridge CFPropertyListRef)[_settings[@"strings"] copy], CFSTR("xyz.skitty.ersatz"));
     CFPreferencesAppSynchronize(CFSTR("xyz.skitty.ersatz"));
     CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(), CFSTR("xyz.skitty.ersatz.prefschanged"), NULL, NULL, true);
 }
@@ -60,7 +38,7 @@ static NSString *settingsPath(void) {
     for (NSDictionary *rule in _settings[@"strings"]) {
         NSString *phrase = rule[@"phrase"];
         if (![phrase isKindOfClass:[NSString class]] || phrase.length == 0) continue;
-        _strings[phrase] = [rule[@"replacement"] isKindOfClass:[NSString class]] ? rule[@"replacement"] : @"";
+        _strings[phrase] = rule[@"replacement"] ?: @"";
         NSString *section = [[phrase substringToIndex:1] uppercaseString];
         if (!_sortedStrings[section]) _sortedStrings[section] = [NSMutableArray array];
         [_sortedStrings[section] addObject:phrase];
@@ -75,13 +53,9 @@ static NSString *settingsPath(void) {
 }
 
 - (void)addPhrase:(NSString *)phrase replacement:(NSString *)replacement caseSensitive:(BOOL)caseSensitive wholeWord:(BOOL)wholeWord scope:(NSString *)scope applications:(NSArray *)applications {
-    if (!_settings[@"shownPrompt"]) {
-        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Notice" message:@"Changes may require reopening apps or respringing." preferredStyle:UIAlertControllerStyleAlert];
-        [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
-        [self presentViewController:alert animated:YES completion:nil];
-        _settings[@"shownPrompt"] = @YES;
-    }
-    NSDictionary *rule = @{ @"phrase": phrase ?: @"", @"replacement": replacement ?: @"", @"caseSensitive": @(caseSensitive), @"wholeWord": @(wholeWord), @"scope": scope ?: @"all", @"applications": applications ?: @[] };
+    if (!phrase.length || !replacement.length) return;
+    if (!_settings[@"shownPrompt"]) _settings[@"shownPrompt"] = @YES;
+    NSDictionary *rule = @{ @"phrase": phrase, @"replacement": replacement, @"caseSensitive": @(caseSensitive), @"wholeWord": @(wholeWord), @"scope": scope ?: @"all", @"applications": applications ?: @[] };
     [_settings[@"strings"] addObject:rule];
     [self updateSettings];
     [self sortSettings];
@@ -89,20 +63,22 @@ static NSString *settingsPath(void) {
 }
 
 - (void)editPhrase:(NSString *)oldPhrase newPhrase:(NSString *)phrase replacement:(NSString *)replacement caseSensitive:(BOOL)caseSensitive wholeWord:(BOOL)wholeWord scope:(NSString *)scope applications:(NSArray *)applications {
-    for (NSUInteger i = 0; i < [_settings[@"strings"] count]; i++) {
-        NSDictionary *rule = _settings[@"strings"][i];
-        if ([rule[@"phrase"] isEqualToString:oldPhrase]) {
-            _settings[@"strings"][i] = @{ @"phrase": phrase ?: @"", @"replacement": replacement ?: @"", @"caseSensitive": @(caseSensitive), @"wholeWord": @(wholeWord), @"scope": scope ?: @"all", @"applications": applications ?: @[] };
-            break;
+    if (!phrase.length || !replacement.length) return;
+    NSMutableArray *rules = _settings[@"strings"];
+    for (NSUInteger index = 0; index < rules.count; index++) {
+        NSDictionary *oldRule = rules[index];
+        if ([oldRule[@"phrase"] isEqualToString:oldPhrase]) {
+            rules[index] = @{ @"phrase": phrase, @"replacement": replacement, @"caseSensitive": @(caseSensitive), @"wholeWord": @(wholeWord), @"scope": scope ?: @"all", @"applications": applications ?: @[] };
+            [self updateSettings];
+            [self sortSettings];
+            [self.tableView reloadData];
+            return;
         }
     }
-    [self updateSettings];
-    [self sortSettings];
-    [self.tableView reloadData];
 }
 
 - (NSArray *)sections { return [[_sortedStrings allKeys] sortedArrayUsingSelector:@selector(localizedCaseInsensitiveCompare:)]; }
-- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView { return _sortedStrings.count; }
+- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView { return [self sections].count; }
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section { return [_sortedStrings[[self sections][section]] count]; }
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section { return [self sections][section]; }
 
@@ -133,10 +109,7 @@ static NSString *settingsPath(void) {
     if (editingStyle != UITableViewCellEditingStyleDelete) return;
     NSString *phrase = _sortedStrings[[self sections][indexPath.section]][indexPath.row];
     for (NSDictionary *rule in [_settings[@"strings"] copy]) {
-        if ([rule[@"phrase"] isEqualToString:phrase]) {
-            [_settings[@"strings"] removeObject:rule];
-            break;
-        }
+        if ([rule[@"phrase"] isEqualToString:phrase]) { [_settings[@"strings"] removeObject:rule]; break; }
     }
     [self updateSettings];
     [self sortSettings];
