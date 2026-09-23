@@ -1,4 +1,5 @@
 #import "EZEditPhraseViewController.h"
+#import "EZPhraseListViewController.h"
 
 @implementation EZEditPhraseViewController
 
@@ -23,9 +24,18 @@
 
 - (void)savePhrase {
     if (self.target.length == 0 || self.replacement.length == 0 || [self.target isEqualToString:self.replacement]) return;
-    [self.parent editPhrase:self.originalPhrase newPhrase:self.target replacement:self.replacement caseSensitive:self.caseSensitive wholeWord:self.wholeWord scope:self.scope applications:[self.selectedApplications copy]];
+    [self.parent editPhrase:self.originalPhrase
+                   newPhrase:self.target
+                  replacement:self.replacement
+                caseSensitive:self.caseSensitive
+                    wholeWord:self.wholeWord
+                       scope:self.scope
+                  applications:[self.selectedApplications copy]];
     [self.navigationController popViewControllerAnimated:YES];
 }
 
-- (void)addPhrase { [self savePhrase]; }
+- (void)addPhrase {
+    [self savePhrase];
+}
+
 @end
