@@ -19,25 +19,37 @@ static NSString *currentApplicationIdentifier(void) {
 }
 
 static void refreshPrefs(void) {
+    // The preferences bundle writes the rootless-resolved plist directly. Use
+    // that as the source of truth; CFPreferences can otherwise return an
+    // older cached value and overwrite the newly saved rules.
     NSMutableDictionary *settings = [[NSMutableDictionary alloc] initWithContentsOfFile:settingsPath()];
-    CFPreferencesSynchronize((CFStringRef)bundleIdentifier, kCFPreferencesCurrentUser, kCFPreferencesAnyHost);
 
-    CFArrayRef keyList = CFPreferencesCopyKeyList((CFStringRef)bundleIdentifier, kCFPreferencesCurrentUser, kCFPreferencesAnyHost);
-    if (keyList) {
-        NSDictionary *cfSettings = (NSDictionary *)CFBridgingRelease(CFPreferencesCopyMultiple(keyList, (CFStringRef)bundleIdentifier, kCFPreferencesCurrentUser, kCFPreferencesAnyHost));
-        CFRelease(keyList);
-        if (!settings && [cfSettings isKindOfClass:[NSDictionary class]]) settings = [cfSettings mutableCopy];
-        else if ([cfSettings[@"strings"] isKindOfClass:[NSArray class]]) settings[@"strings"] = cfSettings[@"strings"];
+    if (!settings) {
+        CFPreferencesSynchronize((CFStringRef)bundleIdentifier, kCFPreferencesCurrentUser, kCFPreferencesAnyHost);
+        CFArrayRef keyList = CFPreferencesCopyKeyList((CFStringRef)bundleIdentifier, kCFPreferencesCurrentUser, kCFPreferencesAnyHost);
+        if (keyList) {
+            NSDictionary *cfSettings = (NSDictionary *)CFBridgingRelease(CFPreferencesCopyMultiple(keyList, (CFStringRef)bundleIdentifier, kCFPreferencesCurrentUser, kCFPreferencesAnyHost));
+            CFRelease(keyList);
+            if ([cfSettings isKindOfClass:[NSDictionary class]]) settings = [cfSettings mutableCopy];
+        }
     }
     if (!settings) settings = [NSMutableDictionary dictionary];
 
+    id rawRules = settings[@"strings"];
     keyedSettings = [NSMutableDictionary dictionary];
     NSMutableDictionary *replacementMap = [NSMutableDictionary dictionary];
-    for (NSDictionary *rule in settings[@"strings"]) {
-        NSString *phrase = rule[@"phrase"];
-        if (![phrase isKindOfClass:[NSString class]] || phrase.length == 0) continue;
-        replacementMap[phrase] = [rule[@"replacement"] isKindOfClass:[NSString class]] ? rule[@"replacement"] : @"";
-        keyedSettings[phrase] = rule;
+
+    if ([rawRules isKindOfClass:[NSArray class]]) {
+        for (id object in (NSArray *)rawRules) {
+            if (![object isKindOfClass:[NSDictionary class]]) continue;
+            NSDictionary *rule = (NSDictionary *)object;
+            NSString *phrase = rule[@"phrase"];
+            NSString *replacement = rule[@"replacement"];
+            if (![phrase isKindOfClass:[NSString class]] || phrase.length == 0) continue;
+            if (![replacement isKindOfClass:[NSString class]]) replacement = @"";
+            replacementMap[phrase] = replacement;
+            keyedSettings[phrase] = rule;
+        }
     }
     strings = [replacementMap copy];
 }
@@ -108,6 +120,7 @@ static NSAttributedString *replaceAttributedString(NSAttributedString *text, NSS
 }
 
 static NSString *applyRules(NSString *text) {
+    if (![text isKindOfClass:[NSString class]] || strings.count == 0) return text;
     for (NSString *find in strings) {
         NSDictionary *rule = keyedSettings[find];
         if (ruleAppliesToCurrentApplication(rule)) text = replaceString(text, find, strings[find], rule);
@@ -116,6 +129,7 @@ static NSString *applyRules(NSString *text) {
 }
 
 static NSAttributedString *applyAttributedRules(NSAttributedString *text) {
+    if (![text isKindOfClass:[NSAttributedString class]] || strings.count == 0) return text;
     for (NSString *find in strings) {
         NSDictionary *rule = keyedSettings[find];
         if (ruleAppliesToCurrentApplication(rule)) text = replaceAttributedString(text, find, strings[find], rule);
