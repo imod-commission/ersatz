@@ -6,6 +6,12 @@ static NSString *settingsPath = ROOT_PATH_NS(@"/var/mobile/Library/Preferences/"
 static NSMutableDictionary *keyedSettings;
 static NSDictionary<NSString *, NSString *> *strings;
 
+static NSString *currentApplicationIdentifier(void) {
+    NSString *identifier = [[NSBundle mainBundle] bundleIdentifier];
+    if (identifier.length == 0) identifier = [[NSBundle bundleForClass:[UIApplication class]] bundleIdentifier];
+    return identifier;
+}
+
 static void refreshPrefs(void) {
     CFArrayRef keyList = CFPreferencesCopyKeyList((CFStringRef)bundleIdentifier, kCFPreferencesCurrentUser, kCFPreferencesAnyHost);
     NSMutableDictionary *settings = nil;
@@ -20,8 +26,8 @@ static void refreshPrefs(void) {
     NSMutableDictionary *replacementMap = [NSMutableDictionary dictionary];
     for (NSDictionary *rule in settings[@"strings"]) {
         NSString *phrase = rule[@"phrase"];
-        if (phrase.length == 0) continue;
-        replacementMap[phrase] = rule[@"replacement"] ?: @"";
+        if (![phrase isKindOfClass:[NSString class]] || phrase.length == 0) continue;
+        replacementMap[phrase] = [rule[@"replacement"] isKindOfClass:[NSString class]] ? rule[@"replacement"] : @"";
         keyedSettings[phrase] = rule;
     }
     strings = [replacementMap copy];
@@ -29,6 +35,20 @@ static void refreshPrefs(void) {
 
 static void PreferencesChangedCallback(CFNotificationCenterRef center, void *observer, CFStringRef name, const void *object, CFDictionaryRef userInfo) {
     refreshPrefs();
+}
+
+static BOOL ruleAppliesToCurrentApplication(NSDictionary *rule) {
+    NSString *scope = rule[@"scope"];
+    if (![scope isKindOfClass:[NSString class]] || [scope isEqualToString:@"all"]) return YES;
+
+    NSArray *applications = rule[@"applications"];
+    if (![applications isKindOfClass:[NSArray class]]) return NO;
+    NSString *identifier = currentApplicationIdentifier();
+    BOOL selected = identifier.length > 0 && [applications containsObject:identifier];
+
+    if ([scope isEqualToString:@"selected"]) return selected;
+    if ([scope isEqualToString:@"excluded"]) return !selected;
+    return YES;
 }
 
 static BOOL ruleCaseSensitive(NSDictionary *rule) {
@@ -52,7 +72,6 @@ static NSArray<NSValue *> *replacementRanges(NSString *text, NSString *find, NSD
         return ranges;
     }
 
-    // Unicode letters/numbers and underscore count as word characters.
     NSString *pattern = [NSString stringWithFormat:@"(?<![\\p{L}\\p{N}_])%@(?!(?:[\\p{L}\\p{N}_]))", [NSRegularExpression escapedPatternForString:find]];
     NSRegularExpressionOptions options = ruleCaseSensitive(rule) ? 0 : NSRegularExpressionCaseInsensitive;
     NSRegularExpression *regex = [NSRegularExpression regularExpressionWithPattern:pattern options:options error:nil];
@@ -63,9 +82,7 @@ static NSString *replaceString(NSString *text, NSString *find, NSString *replace
     if (!text || !find || !replacement) return text;
     NSMutableString *result = [text mutableCopy];
     NSArray<NSValue *> *ranges = replacementRanges(text, find, rule);
-    for (NSInteger i = ranges.count - 1; i >= 0; i--) {
-        [result replaceCharactersInRange:[ranges[i] rangeValue] withString:replacement];
-    }
+    for (NSInteger i = ranges.count - 1; i >= 0; i--) [result replaceCharactersInRange:[ranges[i] rangeValue] withString:replacement];
     return result;
 }
 
@@ -83,12 +100,18 @@ static NSAttributedString *replaceAttributedString(NSAttributedString *text, NSS
 }
 
 static NSString *applyRules(NSString *text) {
-    for (NSString *find in strings) text = replaceString(text, find, strings[find], keyedSettings[find]);
+    for (NSString *find in strings) {
+        NSDictionary *rule = keyedSettings[find];
+        if (ruleAppliesToCurrentApplication(rule)) text = replaceString(text, find, strings[find], rule);
+    }
     return text;
 }
 
 static NSAttributedString *applyAttributedRules(NSAttributedString *text) {
-    for (NSString *find in strings) text = replaceAttributedString(text, find, strings[find], keyedSettings[find]);
+    for (NSString *find in strings) {
+        NSDictionary *rule = keyedSettings[find];
+        if (ruleAppliesToCurrentApplication(rule)) text = replaceAttributedString(text, find, strings[find], rule);
+    }
     return text;
 }
 
