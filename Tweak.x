@@ -9,7 +9,7 @@ static NSMutableDictionary *keyedSettings;
 static NSDictionary<NSString *, NSString *> *strings;
 
 static NSString *settingsPath(void) {
-    return ROOT_PATH_NS(@"/var/mobile/Library/Preferences/");
+    return ROOT_PATH_NS(@"/var/mobile/Library/Preferences/xyz.skitty.ersatz.plist");
 }
 
 static NSString *currentApplicationIdentifier(void) {
@@ -19,13 +19,16 @@ static NSString *currentApplicationIdentifier(void) {
 }
 
 static void refreshPrefs(void) {
+    NSMutableDictionary *settings = [[NSMutableDictionary alloc] initWithContentsOfFile:settingsPath()];
+    CFPreferencesSynchronize((CFStringRef)bundleIdentifier, kCFPreferencesCurrentUser, kCFPreferencesAnyHost);
+
     CFArrayRef keyList = CFPreferencesCopyKeyList((CFStringRef)bundleIdentifier, kCFPreferencesCurrentUser, kCFPreferencesAnyHost);
-    NSMutableDictionary *settings = nil;
     if (keyList) {
-        settings = (NSMutableDictionary *)CFBridgingRelease(CFPreferencesCopyMultiple(keyList, (CFStringRef)bundleIdentifier, kCFPreferencesCurrentUser, kCFPreferencesAnyHost));
+        NSDictionary *cfSettings = (NSDictionary *)CFBridgingRelease(CFPreferencesCopyMultiple(keyList, (CFStringRef)bundleIdentifier, kCFPreferencesCurrentUser, kCFPreferencesAnyHost));
         CFRelease(keyList);
+        if (!settings && [cfSettings isKindOfClass:[NSDictionary class]]) settings = [cfSettings mutableCopy];
+        else if ([cfSettings[@"strings"] isKindOfClass:[NSArray class]]) settings[@"strings"] = cfSettings[@"strings"];
     }
-    if (!settings) settings = [[NSMutableDictionary alloc] initWithContentsOfFile:[NSString stringWithFormat:@"%@%@.plist", settingsPath(), bundleIdentifier]];
     if (!settings) settings = [NSMutableDictionary dictionary];
 
     keyedSettings = [NSMutableDictionary dictionary];
@@ -61,6 +64,7 @@ static BOOL ruleCaseSensitive(NSDictionary *rule) {
 
 static NSArray<NSValue *> *replacementRanges(NSString *text, NSString *find, NSDictionary *rule) {
     if (text.length == 0 || find.length == 0) return @[];
+
     if (![rule[@"wholeWord"] boolValue]) {
         NSMutableArray *ranges = [NSMutableArray array];
         NSStringCompareOptions options = ruleCaseSensitive(rule) ? 0 : NSCaseInsensitiveSearch;
