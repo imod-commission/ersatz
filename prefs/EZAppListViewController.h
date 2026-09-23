@@ -1,8 +1,8 @@
 #import <UIKit/UIKit.h>
-@class EZPhraseListViewController;
+@class EZAddPhraseViewController;
 
 @interface EZAppListViewController : UITableViewController
 @property (nonatomic, retain) NSArray *applications;
 @property (nonatomic, retain) NSMutableArray *selectedApplications;
-@property (nonatomic, retain) EZPhraseListViewController *parent;
+@property (nonatomic, retain) EZAddPhraseViewController *parent;
 @end
