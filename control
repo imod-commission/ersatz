@@ -1,12 +1,9 @@
 Package: xyz.skitty.ersatz
 Name: Ersatz
-Depends: mobilesubstrate, preferenceloader
+Depends: firmware (>= 11.0), mobilesubstrate, preferenceloader, com.opa334.rootless
 Version: 1.0.1
-Architecture: iphoneos-arm
+Architecture: iphoneos-arm64
 Description: Replace any text, system-wide!
-Icon: https://skitty.xyz/repo/icons/xyz.skitty.ersatz.png
-Depiction: https://skitty.xyz/repo/depictions/xyz.skitty.ersatz/
-SileoDepiction: https://skitty.xyz/repo/depictions/xyz.skitty.ersatz/sileo.json
 Maintainer: Skitty
 Author: Skitty
 Section: Tweaks
