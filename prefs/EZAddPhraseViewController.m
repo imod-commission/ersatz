@@ -1,4 +1,5 @@
 #import "EZAddPhraseViewController.h"
+#import "EZPhraseListViewController.h"
 #import <Preferences/PSEditableTableCell.h>
 #import <Preferences/PSSwitchTableCell.h>
 #import "EZAppListViewController.h"
@@ -12,10 +13,10 @@
 - (instancetype)init {
     self = [super init];
     if (self) {
-        _caseSensitive = YES;
-        _wholeWord = NO;
-        _scope = @"all";
-        _selectedApplications = [NSMutableArray array];
+        self.caseSensitive = YES;
+        self.wholeWord = NO;
+        self.scope = @"all";
+        self.selectedApplications = [NSMutableArray array];
     }
     return self;
 }
@@ -43,17 +44,17 @@
     self.navigationItem.rightBarButtonItem.enabled = self.target.length > 0 && self.replacement.length > 0 && ![self.target isEqualToString:self.replacement];
 }
 
-- (void)setTarget:(NSString *)value { _target = [value copy]; [self updateDoneButton]; }
-- (void)setReplacement:(NSString *)value { _replacement = [value copy]; [self updateDoneButton]; }
+- (void)setTarget:(NSString *)target { _target = [target copy]; [self updateDoneButton]; }
+- (void)setReplacement:(NSString *)replacement { _replacement = [replacement copy]; [self updateDoneButton]; }
 - (void)setTargetValue:(id)value forSpecifier:(PSSpecifier *)specifier { self.target = value; }
 - (id)readTargetValue:(PSSpecifier *)specifier { return self.target; }
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView { return 3; }
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section { return section == 0 ? 2 : 2; }
-- (void)targetTextDidChange:(UITextField *)field { self.target = field.text; }
-- (void)replacementTextDidChange:(UITextField *)field { self.replacement = field.text; }
-- (void)caseSwitchDidChange:(UISwitch *)control { self.caseSensitive = control.on; }
-- (void)wholeWordSwitchDidChange:(UISwitch *)control { self.wholeWord = control.on; }
+- (void)targetTextDidChange:(UITextField *)f { self.target = f.text; }
+- (void)replacementTextDidChange:(UITextField *)f { self.replacement = f.text; }
+- (void)caseSwitchDidChange:(UISwitch *)s { self.caseSensitive = s.on; }
+- (void)wholeWordSwitchDidChange:(UISwitch *)s { self.wholeWord = s.on; }
 
 - (NSString *)scopeTitle {
     if ([self.scope isEqualToString:@"selected"]) return [NSString stringWithFormat:@"Selected Apps (%lu)", (unsigned long)self.selectedApplications.count];
