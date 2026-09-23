@@ -1,10 +1,16 @@
+// Ersatz - Replace any text system-wide!
+// By Skitty
+
 #import <UIKit/UIKit.h>
 #import <rootless.h>
 
 static NSString *bundleIdentifier = @"xyz.skitty.ersatz";
-static NSString *settingsPath = ROOT_PATH_NS(@"/var/mobile/Library/Preferences/");
 static NSMutableDictionary *keyedSettings;
 static NSDictionary<NSString *, NSString *> *strings;
+
+static NSString *settingsPath(void) {
+    return ROOT_PATH_NS(@"/var/mobile/Library/Preferences/");
+}
 
 static NSString *currentApplicationIdentifier(void) {
     NSString *identifier = [[NSBundle mainBundle] bundleIdentifier];
@@ -19,7 +25,7 @@ static void refreshPrefs(void) {
         settings = (NSMutableDictionary *)CFBridgingRelease(CFPreferencesCopyMultiple(keyList, (CFStringRef)bundleIdentifier, kCFPreferencesCurrentUser, kCFPreferencesAnyHost));
         CFRelease(keyList);
     }
-    if (!settings) settings = [[NSMutableDictionary alloc] initWithContentsOfFile:[NSString stringWithFormat:@"%@%@.plist", settingsPath, bundleIdentifier]];
+    if (!settings) settings = [[NSMutableDictionary alloc] initWithContentsOfFile:[NSString stringWithFormat:@"%@%@.plist", settingsPath(), bundleIdentifier]];
     if (!settings) settings = [NSMutableDictionary dictionary];
 
     keyedSettings = [NSMutableDictionary dictionary];
@@ -40,12 +46,10 @@ static void PreferencesChangedCallback(CFNotificationCenterRef center, void *obs
 static BOOL ruleAppliesToCurrentApplication(NSDictionary *rule) {
     NSString *scope = rule[@"scope"];
     if (![scope isKindOfClass:[NSString class]] || [scope isEqualToString:@"all"]) return YES;
-
     NSArray *applications = rule[@"applications"];
     if (![applications isKindOfClass:[NSArray class]]) return NO;
     NSString *identifier = currentApplicationIdentifier();
     BOOL selected = identifier.length > 0 && [applications containsObject:identifier];
-
     if ([scope isEqualToString:@"selected"]) return selected;
     if ([scope isEqualToString:@"excluded"]) return !selected;
     return YES;
