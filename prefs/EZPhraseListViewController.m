@@ -13,7 +13,7 @@ static NSString *settingsPath(void) {
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.title = @"Ersatz";
-    self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemAdd target:self action:@selector(addPhrase)];
+    self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemAdd target:self action:@selector(showAddPhrase)];
     self.tableView = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStylePlain];
     self.tableView.delegate = self;
     self.tableView.dataSource = self;
@@ -42,8 +42,8 @@ static NSString *settingsPath(void) {
     _sortedStrings = [NSMutableDictionary dictionary];
     for (NSDictionary *rule in _settings[@"strings"]) {
         NSString *phrase = rule[@"phrase"];
-        if (phrase.length == 0) continue;
-        _strings[phrase] = rule[@"replacement"] ?: @"";
+        if (![phrase isKindOfClass:[NSString class]] || phrase.length == 0) continue;
+        _strings[phrase] = [rule[@"replacement"] isKindOfClass:[NSString class]] ? rule[@"replacement"] : @"";
         NSString *section = [[phrase substringToIndex:1] uppercaseString];
         if (!_sortedStrings[section]) _sortedStrings[section] = [NSMutableArray array];
         [_sortedStrings[section] addObject:phrase];
@@ -51,7 +51,9 @@ static NSString *settingsPath(void) {
     for (NSString *section in _sortedStrings) [_sortedStrings[section] sortUsingSelector:@selector(localizedCaseInsensitiveCompare:)];
 }
 
-- (void)addPhrase {
+// Deliberately use a unique selector instead of addPhrase:, which can collide
+// with selectors used internally by Preferences/PSViewController.
+- (void)showAddPhrase {
     EZAddPhraseViewController *controller = [EZAddPhraseViewController new];
     controller.parent = self;
     [self.navigationController pushViewController:controller animated:YES];
@@ -64,7 +66,7 @@ static NSString *settingsPath(void) {
         [self presentViewController:alert animated:YES completion:nil];
         _settings[@"shownPrompt"] = @YES;
     }
-    NSDictionary *rule = @{ @"phrase": phrase, @"replacement": replacement, @"caseSensitive": @(caseSensitive), @"wholeWord": @(wholeWord), @"scope": scope ?: @"all", @"applications": applications ?: @[] };
+    NSDictionary *rule = @{ @"phrase": phrase ?: @"", @"replacement": replacement ?: @"", @"caseSensitive": @(caseSensitive), @"wholeWord": @(wholeWord), @"scope": scope ?: @"all", @"applications": applications ?: @[] };
     [_settings[@"strings"] addObject:rule];
     [self updateSettings];
     [self sortSettings];
@@ -75,7 +77,7 @@ static NSString *settingsPath(void) {
     for (NSUInteger i = 0; i < [_settings[@"strings"] count]; i++) {
         NSDictionary *rule = _settings[@"strings"][i];
         if ([rule[@"phrase"] isEqualToString:oldPhrase]) {
-            _settings[@"strings"][i] = @{ @"phrase": phrase, @"replacement": replacement, @"caseSensitive": @(caseSensitive), @"wholeWord": @(wholeWord), @"scope": scope ?: @"all", @"applications": applications ?: @[] };
+            _settings[@"strings"][i] = @{ @"phrase": phrase ?: @"", @"replacement": replacement ?: @"", @"caseSensitive": @(caseSensitive), @"wholeWord": @(wholeWord), @"scope": scope ?: @"all", @"applications": applications ?: @[] };
             break;
         }
     }
@@ -84,7 +86,10 @@ static NSString *settingsPath(void) {
     [self.tableView reloadData];
 }
 
-- (NSArray *)sections { return [[_sortedStrings allKeys] sortedArrayUsingSelector:@selector(localizedCaseInsensitiveCompare:)]; }
+- (NSArray *)sections {
+    return [[_sortedStrings allKeys] sortedArrayUsingSelector:@selector(localizedCaseInsensitiveCompare:)];
+}
+
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView { return _sortedStrings.count; }
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section { return [_sortedStrings[[self sections][section]] count]; }
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section { return [self sections][section]; }
